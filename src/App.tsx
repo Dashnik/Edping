@@ -6,8 +6,8 @@ function App() {
   const [lastSentTime, setLastSentTime] = useState<Date | null>(null)
   const [nextSendTime, setNextSendTime] = useState<Date | null>(null)
   const [countdown, setCountdown] = useState<string>('')
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const countdownRef = useRef<NodeJS.Timeout | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const sendMessage = () => {
     const message = 'че там по проекту?'
