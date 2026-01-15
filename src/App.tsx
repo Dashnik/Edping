@@ -2,12 +2,38 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import './App.css'
 
 function App() {
+  // Initialize state from localStorage immediately
+  const getInitialState = () => {
+    try {
+      const lastSentStr = localStorage.getItem('edping_lastSent')
+      const nextSendStr = localStorage.getItem('edping_nextSend')
+      
+      if (lastSentStr && nextSendStr) {
+        const lastSent = new Date(lastSentStr)
+        const nextSend = new Date(nextSendStr)
+        const now = new Date()
+        
+        // If nextSend has passed, return null to trigger immediate send
+        if (nextSend.getTime() <= now.getTime()) {
+          return { lastSent: null, nextSend: null }
+        }
+        
+        return { lastSent, nextSend }
+      }
+    } catch (error) {
+      console.error('Failed to load from localStorage:', error)
+    }
+    return { lastSent: null, nextSend: null }
+  }
+
+  const initialState = getInitialState()
   const [isReady, setIsReady] = useState(false)
-  const [lastSentTime, setLastSentTime] = useState<Date | null>(null)
-  const [nextSendTime, setNextSendTime] = useState<Date | null>(null)
+  const [lastSentTime, setLastSentTime] = useState<Date | null>(initialState.lastSent)
+  const [nextSendTime, setNextSendTime] = useState<Date | null>(initialState.nextSend)
   const [countdown, setCountdown] = useState<string>('')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const saveToStorage = (lastSent: Date, nextSend: Date) => {
     try {
@@ -99,30 +125,64 @@ function App() {
     const stored = loadFromStorage()
     const now = new Date()
 
-    if (stored) {
-      const { lastSent, nextSend } = stored
-      
-      // Check if the next send time has passed
-      if (nextSend.getTime() <= now.getTime()) {
-        // Time has passed, send immediately and set new timer
-        sendMessage()
-      } else {
-        // Continue from stored time
-        setLastSentTime(lastSent)
-        setNextSendTime(nextSend)
+    const scheduleNextSend = () => {
+      // Clear any existing timeouts/intervals
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
       }
-    } else {
-      // No stored data, send first message immediately
-      sendMessage()
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+
+      if (stored) {
+        const { nextSend } = stored
+        
+        // Check if the next send time has passed
+        if (nextSend.getTime() <= now.getTime()) {
+          // Time has passed, send immediately and set new timer
+          sendMessage()
+          // Schedule the next send in 15 minutes
+          timeoutRef.current = setTimeout(() => {
+            sendMessage()
+            // After first send, set up interval for subsequent sends
+            intervalRef.current = setInterval(() => {
+              sendMessage()
+            }, 15 * 60 * 1000)
+          }, 15 * 60 * 1000)
+        } else {
+          // Continue from stored time - calculate remaining time
+          const remainingTime = nextSend.getTime() - now.getTime()
+          
+          // Schedule send at the stored nextSend time
+          timeoutRef.current = setTimeout(() => {
+            sendMessage()
+            // After first send, set up interval for subsequent sends
+            intervalRef.current = setInterval(() => {
+              sendMessage()
+            }, 15 * 60 * 1000)
+          }, remainingTime)
+        }
+      } else {
+        // No stored data, send first message immediately
+        sendMessage()
+        // Schedule the next send in 15 minutes
+        timeoutRef.current = setTimeout(() => {
+          sendMessage()
+          // After first send, set up interval for subsequent sends
+          intervalRef.current = setInterval(() => {
+            sendMessage()
+          }, 15 * 60 * 1000)
+        }, 15 * 60 * 1000)
+      }
     }
 
-    // Set up interval to send message every 15 minutes (900000 ms)
-    intervalRef.current = setInterval(() => {
-      sendMessage()
-    }, 15 * 60 * 1000)
+    scheduleNextSend()
 
     // Cleanup interval on unmount
     return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
       }
